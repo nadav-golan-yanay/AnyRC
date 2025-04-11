@@ -1,6 +1,7 @@
 import os
 import importlib
 import tkinter as tk
+import pygame  # Import pygame module
 from tkinter import ttk, Frame
 from src.usbController import list_available_devices
 from src.usb_to_rc_converter import USBToRCConverter

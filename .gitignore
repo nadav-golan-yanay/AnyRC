@@ -1,5 +1,7 @@
 # Debug folder
-Coding_Tests/*
+Coding_Tests/
+Coding_Tests/**
+/Coding_Tests/
 
 # Python specific
 __pycache__/
