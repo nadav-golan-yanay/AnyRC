@@ -47,12 +47,27 @@ class USBComm:
             self.serial_connection.close()
 
     @staticmethod
-    def detect_arduino():
+    def list_arduino_ports():
         """
-        Detects if an Arduino is connected by checking available serial ports.
+        Returns a list of all potential Arduino devices with their descriptions.
         """
+        arduino_ports = []
         ports = serial.tools.list_ports.comports()
         for port in ports:
             if "Arduino" in port.description or "CH340" in port.description:
-                return port.device
+                arduino_ports.append({
+                    'device': port.device,
+                    'description': port.description
+                })
+        return arduino_ports
+
+    @staticmethod
+    def detect_arduino():
+        """
+        Detects Arduino devices. Returns the first device if only one is found,
+        otherwise returns None.
+        """
+        arduino_ports = USBComm.list_arduino_ports()
+        if len(arduino_ports) == 1:
+            return arduino_ports[0]['device']
         return None

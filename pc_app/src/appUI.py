@@ -2,11 +2,14 @@ import os
 import importlib
 import tkinter as tk
 import pygame  # Import pygame module
+import tkinter.messagebox as messagebox
 from tkinter import ttk, Frame
 from src.usbController import list_available_devices
 from src.usb_to_rc_converter import USBToRCConverter
 from src import process  # Import the process module
 from usb_comm import USBComm  # Ensure USBComm is imported
+import gc  # Add at top with other imports
+import time
 
 class AnyRC:
     def __init__(self, root):
@@ -105,6 +108,9 @@ class AnyRC:
 
         self.current_row = None  # Track the row for which input is being assigned
         self.reading_inputs = False  # Track whether input reading is active
+        self.last_gc_time = time.time()
+        self.update_interval = 100  # 100ms for UI updates
+        self.gc_interval = 60  # Run garbage collection every 60 seconds
         self.update_rc_display_periodically()  # Now safe to call this
 
     def set_usb_comm(self, usb_comm):
@@ -115,12 +121,49 @@ class AnyRC:
 
     def setup_usb_comm(self):
         """
-        Detects and connects to the Arduino.
+        Detects and connects to the Arduino. Shows selection dialog if multiple devices found.
         """
-        arduino_port = USBComm.detect_arduino()
-        if arduino_port:
-            self.usb_comm = USBComm(port=arduino_port)
-            self.usb_comm.connect()
+        arduino_ports = USBComm.list_arduino_ports()
+        
+        if not arduino_ports:
+            self.usb_status_label.config(text="USB Status: No Arduino found", foreground="red")
+            return
+            
+        if len(arduino_ports) == 1:
+            port = arduino_ports[0]['device']
+        else:
+            # Create selection dialog
+            dialog = tk.Toplevel(self.root)
+            dialog.title("Select Arduino Device")
+            dialog.geometry("400x200")
+            dialog.transient(self.root)
+            dialog.grab_set()
+            
+            selected_port = tk.StringVar()
+            
+            def on_select():
+                dialog.destroy()
+            
+            ttk.Label(dialog, text="Multiple Arduino devices found.\nPlease select one:").pack(pady=10)
+            
+            for port_info in arduino_ports:
+                text = f"{port_info['device']} - {port_info['description']}"
+                ttk.Radiobutton(dialog, text=text, value=port_info['device'], 
+                              variable=selected_port).pack(pady=5)
+            
+            ttk.Button(dialog, text="Connect", command=on_select).pack(pady=10)
+            
+            self.root.wait_window(dialog)
+            port = selected_port.get()
+            
+            if not port:  # User closed dialog without selecting
+                return
+        
+        self.usb_comm = USBComm(port=port)
+        if self.usb_comm.connect():
+            self.usb_status_label.config(text=f"USB Status: Connected to {port}", foreground="green")
+        else:
+            self.usb_status_label.config(text=f"USB Status: Failed to connect to {port}", foreground="red")
 
     def search_usb(self):
         """
@@ -168,18 +211,40 @@ class AnyRC:
 
     def update_rc_display_periodically(self):
         """
-        Periodically updates the RC channel display and USB status.
+        Periodically updates the RC channel display and handles garbage collection.
         """
-        self.update_rc_display()
-        self.update_usb_status()  # Start USB status updates
-        self.root.after(100, self.update_rc_display_periodically)
+        try:
+            current_time = time.time()
+            
+            # Run garbage collection periodically
+            if current_time - self.last_gc_time > self.gc_interval:
+                gc.collect()
+                self.last_gc_time = current_time
+
+            self.update_rc_display()
+            
+            # Schedule next update using weak reference to prevent circular references
+            self.root.after(self.update_interval, lambda: self.update_rc_display_periodically() 
+                          if self.root.winfo_exists() else None)
+        except Exception as e:
+            print(f"Error in update_rc_display_periodically: {e}")
+            # Try to recover by scheduling next update
+            self.root.after(self.update_interval, self.update_rc_display_periodically)
 
     def close_app(self):
         """
-        Closes the application and disconnects the Arduino.
+        Properly cleanup resources before closing.
         """
+        self.reading_inputs = False  # Stop input processing
         if self.usb_comm:
             self.usb_comm.disconnect()
+        
+        # Clear any scheduled updates
+        self.root.after_cancel(self.root.after(1))
+        
+        # Force garbage collection before closing
+        gc.collect()
+        
         self.root.destroy()
 
     def assign_input(self, row):
@@ -252,30 +317,31 @@ class AnyRC:
 
     def update_process_inputs(self):
         """
-        Periodically sends exactly 8 inputs from the UI to the Process class for processing.
+        Periodically sends inputs to the Process class with optimized frequency.
         """
         if not self.reading_inputs:
             return
 
-        # Reload the process module if it has been modified
-        self.reload_process_module()
+        try:
+            self.reload_process_module()
+            inputs = []
+            for row in self.rows[:8]:
+                input_value = row["input_display"].get()
+                inputs.append(int(input_value) if input_value.isdigit() else 0)
 
-        # Collect inputs from the first 8 rows
-        inputs = []
-        for row in self.rows[:8]:  # Ensure only the first 8 rows are considered
-            input_value = row["input_display"].get()
-            inputs.append(int(input_value) if input_value.isdigit() else 0)
+            # Pad with zeros if needed
+            inputs.extend([0] * (8 - len(inputs)))
 
-        # Pad with zeros if fewer than 8 rows are available
-        while len(inputs) < 8:
-            inputs.append(0)
+            self.process.update_ui_inputs(inputs)
+            self.process.process_inputs()
 
-        # Update the Process class with the inputs
-        self.process.update_ui_inputs(inputs)
-        self.process.process_inputs()
-
-        # Schedule the next update
-        self.root.after(100, self.update_process_inputs)  # Update every 100ms
+            # Schedule next update only if still reading inputs
+            if self.reading_inputs and self.root.winfo_exists():
+                self.root.after(self.update_interval, self.update_process_inputs)
+        except Exception as e:
+            print(f"Error in update_process_inputs: {e}")
+            if self.reading_inputs and self.root.winfo_exists():
+                self.root.after(self.update_interval, self.update_process_inputs)
 
     def read_keyboard_input(self, event):
         """
