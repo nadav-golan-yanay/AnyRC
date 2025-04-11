@@ -1,0 +1,24 @@
+# Debug folder
+Coding_Tests/*
+
+# Python specific
+__pycache__/
+*.py[cod]
+*$py.class
+
+# VS Code specific
+.vscode/
+*.code-workspace
+
+# Environment specific
+.env
+venv/
+env/
+
+# Logs and databases
+*.log
+*.sqlite
+
+# Other common files to ignore
+.DS_Store
+Thumbs.db
