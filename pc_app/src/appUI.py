@@ -284,7 +284,6 @@ class AnyRC:
             return
 
         self.current_row = row
-        # Explicitly set the style to show assignment mode
         row["assigned_input"].configure(style="Assigned.TEntry")
 
         if selected_device == "Keyboard":
@@ -292,11 +291,14 @@ class AnyRC:
         elif selected_device == "Mouse":
             dialog = tk.Toplevel(self.root)
             dialog.title("Select Mouse Input")
-            dialog.geometry("300x400")
             dialog.transient(self.root)
             dialog.grab_set()
 
-            ttk.Label(dialog, text="Select mouse input type:").pack(pady=10)
+            # Create main frame with padding
+            main_frame = ttk.Frame(dialog, padding="10")
+            main_frame.pack(fill="both", expand=True)
+
+            ttk.Label(main_frame, text="Select mouse input type:").pack(pady=10)
             
             selected_type = tk.StringVar(value="")
             
@@ -310,22 +312,101 @@ class AnyRC:
             ]
 
             for text, value in input_types:
-                ttk.Radiobutton(dialog, text=text, value=value, 
+                ttk.Radiobutton(main_frame, text=text, value=value, 
                               variable=selected_type).pack(pady=5)
+
+            ttk.Button(main_frame, text="Assign", command=lambda: confirm_selection()).pack(pady=10)
 
             def confirm_selection():
                 input_type = selected_type.get()
                 if input_type:
-                    dialog.destroy()  # Close dialog first
-                    self.capture_mouse_input(None, input_type)  # Then capture input
+                    dialog.destroy()
+                    self.capture_mouse_input(None, input_type)
                 else:
-                    # If no selection, reset the style
                     self.current_row["assigned_input"].configure(style="Default.TEntry")
 
-            ttk.Button(dialog, text="Assign", command=confirm_selection).pack(pady=10)
+            # Update dialog size after all widgets are added
+            dialog.update()
+            dialog.geometry("")  # Reset geometry to fit contents
             
             def on_dialog_close():
-                # Reset style when dialog is closed without selection
+                self.current_row["assigned_input"].configure(style="Default.TEntry")
+                self.current_row = None
+                dialog.destroy()
+                
+            dialog.protocol("WM_DELETE_WINDOW", on_dialog_close)
+
+        elif "PS5" in selected_device or any(controller in selected_device for controller in ["Controller", "Joystick"]):
+            dialog = tk.Toplevel(self.root)
+            dialog.title("Select Controller Input")
+            dialog.transient(self.root)
+            dialog.grab_set()
+
+            # Create scrollable frame
+            container = ttk.Frame(dialog)
+            container.pack(fill="both", expand=True, padx=10, pady=10)
+            
+            canvas = tk.Canvas(container)
+            scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+            scrollable_frame = ttk.Frame(canvas)
+
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+            canvas.configure(yscrollcommand=scrollbar.set)
+
+            ttk.Label(scrollable_frame, text="Select input type:").pack(pady=10)
+            
+            selected_type = tk.StringVar(value="")
+            
+            # Find the controller in available devices
+            for i in range(pygame.joystick.get_count()):
+                joystick = pygame.joystick.Joystick(i)
+                if joystick.get_name() == selected_device:
+                    num_axes = joystick.get_numaxes()
+                    num_buttons = joystick.get_numbuttons()
+                    
+                    # Add axis options
+                    ttk.Label(scrollable_frame, text="Axes:").pack(pady=5)
+                    for axis in range(num_axes):
+                        ttk.Radiobutton(scrollable_frame, text=f"Axis {axis}", 
+                                      value=f"Axis-{axis}",
+                                      variable=selected_type).pack(pady=2)
+                    
+                    # Add button options
+                    ttk.Label(scrollable_frame, text="Buttons:").pack(pady=5)
+                    for button in range(num_buttons):
+                        ttk.Radiobutton(scrollable_frame, text=f"Button {button}", 
+                                      value=f"Button-{button}",
+                                      variable=selected_type).pack(pady=2)
+                    break
+
+            ttk.Button(scrollable_frame, text="Assign", 
+                      command=lambda: confirm_selection()).pack(pady=10)
+
+            def confirm_selection():
+                input_type = selected_type.get()
+                if input_type:
+                    dialog.destroy()
+                    self.capture_controller_input(None, input_type, selected_device)
+                else:
+                    self.current_row["assigned_input"].configure(style="Default.TEntry")
+
+            # Pack the canvas and scrollbar
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+
+            # Update dialog size after all widgets are added
+            dialog.update()
+            # Set maximum height to 80% of screen height
+            max_height = int(dialog.winfo_screenheight() * 0.8)
+            actual_height = min(scrollable_frame.winfo_reqheight() + 40, max_height)
+            dialog.geometry(f"300x{actual_height}")
+            
+            def on_dialog_close():
                 self.current_row["assigned_input"].configure(style="Default.TEntry")
                 self.current_row = None
                 dialog.destroy()
@@ -367,6 +448,25 @@ class AnyRC:
                 self.current_row["assigned_input"].configure(style="Default.TEntry")
                 self.current_row = None
 
+    def capture_controller_input(self, event, input_type, device_name):
+        """
+        Captures controller input for assignment.
+        """
+        if self.current_row:
+            try:
+                # Store both the input type and device name
+                full_input = f"{device_name}:{input_type}"
+                self.current_row["assigned_input"].config(state="normal")
+                self.current_row["assigned_input"].delete(0, "end")
+                self.current_row["assigned_input"].insert(0, full_input)
+                self.current_row["assigned_input"].config(state="readonly")
+                self.current_row["assigned_input"].configure(style="Default.TEntry")
+                self.current_row = None
+            except Exception as e:
+                print(f"Error in capture_controller_input: {e}")
+                self.current_row["assigned_input"].configure(style="Default.TEntry")
+                self.current_row = None
+
     def start_read(self):
         """
         Starts reading input for all devices.
@@ -387,6 +487,8 @@ class AnyRC:
         if self.mouse_motion_active:
             self.root.bind("<Motion>", self.read_mouse_motion)
             self.root.bind("<MouseWheel>", self.read_mouse_motion)
+        # Start controller polling
+        self.root.after(10, self.read_controller_input)  # Poll every 10ms
         self.update_process_inputs()  # Start sending inputs to the process
 
     def stop_read(self):
@@ -569,3 +671,49 @@ class AnyRC:
             row["input_display"].delete(0, "end")
             row["input_display"].insert(0, str(value))
             row["input_display"].config(state="readonly")
+
+    def read_controller_input(self):
+        """
+        Reads input from controllers and updates the corresponding input displays.
+        """
+        if not self.reading_inputs:
+            return
+
+        pygame.event.pump()  # Process pygame events
+
+        for row in self.rows:
+            assigned_input = row["assigned_input"].get()
+            if ":" not in assigned_input:  # Skip non-controller inputs
+                continue
+
+            device_name, input_type = assigned_input.split(":")
+            
+            # Find matching controller
+            for i in range(pygame.joystick.get_count()):
+                joystick = pygame.joystick.Joystick(i)
+                if joystick.get_name() == device_name:
+                    value = 1500  # Default center value
+                    
+                    if input_type.startswith("Axis"):
+                        axis_num = int(input_type.split("-")[1])
+                        if axis_num < joystick.get_numaxes():
+                            # Convert axis value (-1 to 1) to RC range (1000 to 2000)
+                            axis_value = joystick.get_axis(axis_num)
+                            value = int(1500 + (axis_value * 500))
+                    
+                    elif input_type.startswith("Button"):
+                        button_num = int(input_type.split("-")[1])
+                        if button_num < joystick.get_numbuttons():
+                            # Convert button press to RC value
+                            value = 2000 if joystick.get_button(button_num) else 1000
+                    
+                    # Update display
+                    row["input_display"].config(state="normal")
+                    row["input_display"].delete(0, "end")
+                    row["input_display"].insert(0, str(value))
+                    row["input_display"].config(state="readonly")
+                    break
+
+        # Schedule next controller read if still active
+        if self.reading_inputs:
+            self.root.after(10, self.read_controller_input)
