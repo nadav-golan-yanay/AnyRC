@@ -22,9 +22,7 @@ class Process:
         """
         Processes inputs from the UI and computes RC channel values.
         """
-        print(f"[DEBUG] Raw UI inputs: {self.ui_inputs}")  # Debug print
         self.apply_mixing_logic()
-        print(f"[DEBUG] Processed RC channels: {self.rc_channels}")  # Debug print
         self.update_rc_converter()
 
     def apply_mixing_logic(self):

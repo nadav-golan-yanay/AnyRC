@@ -1,10 +1,10 @@
 import tkinter as tk
-from src.appUI import PS5ControllerApp
+from src.appUI import AnyRC
 
 def main():
     # Launch the UI
     root = tk.Tk()
-    app = PS5ControllerApp(root)
+    app = AnyRC(root)
     app.update_rc_display_periodically()  # Start periodic updates
     root.mainloop()
 

@@ -8,11 +8,33 @@ from src.usb_to_rc_converter import USBToRCConverter
 from src import process  # Import the process module
 from usb_comm import USBComm  # Ensure USBComm is imported
 
-class PS5ControllerApp:
+class AnyRC:
     def __init__(self, root):
         self.root = root
-        self.root.title("PS5 Controller App")
-        self.usb_comm = None  # Initialize USBComm first
+        self.root.title("AnyRC Controller")
+        
+        # Set application icon with correct path
+        icon_path = r"C:\Users\nadav\OneDrive\Desktop\RealSIm5.0\pc_app\Icon\AnyRC_Icon.png"
+        try:
+            icon = tk.PhotoImage(file=icon_path, format="png")
+            self.root.iconphoto(False, icon)
+            self._icon = icon  # Keep a reference to prevent garbage collection
+        except Exception as e:
+            print(f"Failed to load icon from {icon_path}: {e}")
+        
+        # Create a frame for USB status and search button
+        self.usb_frame = ttk.Frame(self.root)
+        self.usb_frame.pack(fill='x', pady=5)
+        
+        # Add USB status label
+        self.usb_status_label = ttk.Label(self.usb_frame, text="USB Status: Disconnected", font=("Arial", 10))
+        self.usb_status_label.pack(side='left', padx=5)
+        
+        # Add Search USB button
+        self.search_usb_button = ttk.Button(self.usb_frame, text="Search USB", command=self.search_usb)
+        self.search_usb_button.pack(side='right', padx=5)
+        
+        self.usb_comm = None
         self.setup_usb_comm()  # Setup USB communication immediately
 
         self.rc_converter = USBToRCConverter()  # Initialize the RC converter
@@ -99,8 +121,16 @@ class PS5ControllerApp:
         if arduino_port:
             self.usb_comm = USBComm(port=arduino_port)
             self.usb_comm.connect()
-        else:
-            print("[WARNING] No Arduino detected. Please connect Arduino and restart.")
+
+    def search_usb(self):
+        """
+        Searches for USB devices and attempts to reconnect.
+        """
+        if self.usb_comm:
+            self.usb_comm.disconnect()
+        
+        self.setup_usb_comm()
+        self.update_usb_status()
 
     def open_processor_file(self):
         """
@@ -108,8 +138,8 @@ class PS5ControllerApp:
         """
         try:
             os.system(f"notepad {self.processor_file}")  # Open the processor file in Notepad
-        except Exception as e:
-            print(f"[ERROR] Unable to open processor file: {e}")
+        except Exception:
+            pass
 
     def update_rc_display(self):
         """
@@ -125,14 +155,23 @@ class PS5ControllerApp:
         # Send RC channels to the Arduino if USBComm is set
         if self.usb_comm:
             self.usb_comm.send_rc_channels(self.process.get_rc_channels())
+
+    def update_usb_status(self):
+        """
+        Updates the USB connection status label.
+        """
+        if self.usb_comm and self.usb_comm.serial_connection and self.usb_comm.serial_connection.is_open:
+            self.usb_status_label.config(text="USB Status: Connected", foreground="green")
         else:
-            print("[WARNING] USBComm is not set. RC channels not sent.")
+            self.usb_status_label.config(text="USB Status: Disconnected", foreground="red")
+        self.root.after(1000, self.update_usb_status)  # Check every second
 
     def update_rc_display_periodically(self):
         """
-        Periodically updates the RC channel display.
+        Periodically updates the RC channel display and USB status.
         """
-        self.update_rc_display()  # Always update display
+        self.update_rc_display()
+        self.update_usb_status()  # Start USB status updates
         self.root.after(100, self.update_rc_display_periodically)
 
     def close_app(self):
@@ -208,9 +247,8 @@ class PS5ControllerApp:
                 self.processor_last_modified = current_modified
                 importlib.reload(self.process_module)  # Reload the process module
                 self.process = self.process_module.Process()  # Reinitialize the Process class
-                print("[INFO] Reloaded process module.")
-        except Exception as e:
-            print(f"[ERROR] Failed to reload process module: {e}")
+        except Exception:
+            pass
 
     def update_process_inputs(self):
         """
