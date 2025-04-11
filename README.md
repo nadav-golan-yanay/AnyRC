@@ -1,7 +1,7 @@
 # AnyRC
 
 <p align="center">
-  <img src="assets/logo.png" alt="AnyRC Logo" width="200"/>
+  <img src="pc_app/Icon/AnyRC_logo_compressed.png" alt="AnyRC Logo" width="200"/>
 </p>
 
 ## About The Project
