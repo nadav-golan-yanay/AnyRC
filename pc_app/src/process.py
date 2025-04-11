@@ -29,18 +29,19 @@ class Process:
         """
         Maps UI inputs to RC channel values and applies additional processing logic.
         """
-        #self.rc_channels[0] = (self.ui_inputs[0] * 1000 + 1000)
-        #self.rc_channels[1] = (self.ui_inputs[1] * 1000 + 1000)
+        self.rc_channels[0] = self.ui_inputs[0]
+        self.rc_channels[1] = self.ui_inputs[1]
         self.rc_channels[2] = (self.ui_inputs[2] * 1000 + 1000)
         self.rc_channels[3] = (self.ui_inputs[3] * 1000 + 1000)
         self.rc_channels[4] = (self.ui_inputs[4] * 1000 + 1000)
         self.rc_channels[5] = (self.ui_inputs[5] * 1000 + 1000)
         self.rc_channels[6] = (self.ui_inputs[6] * 1000 + 1000)
         self.rc_channels[7] = (self.ui_inputs[7] * 1000 + 1000)
-        if self.ui_inputs[0] == 1:
-                self.rc_channels[0] += 100
-        if self.ui_inputs[1] == 1:
-                self.rc_channels[0] -= 100
+
+#        if self.ui_inputs[0] == 1:
+#                self.rc_channels[0] += 100
+#        if self.ui_inputs[1] == 1:
+#                self.rc_channels[0] -= 100
 
         # Ensure RC channel values are within valid bounds
         for i in range(len(self.rc_channels)):

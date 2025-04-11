@@ -37,6 +37,21 @@ class AnyRC:
         self.search_usb_button = ttk.Button(self.usb_frame, text="Search USB", command=self.search_usb)
         self.search_usb_button.pack(side='right', padx=5)
         
+        # Add mouse boundary frame after usb_frame
+        self.mouse_boundary = ttk.Frame(self.root, borderwidth=2, relief="solid")
+        self.mouse_boundary.pack(side='right', padx=10, pady=10)
+        # Set fixed size for mouse boundary (200x200 pixels)
+        self.mouse_boundary.configure(width=200, height=200)
+        self.mouse_boundary.pack_propagate(False)
+        
+        # Create a label inside the boundary to make it visible
+        self.boundary_label = ttk.Label(self.mouse_boundary, text="Mouse Control Area")
+        self.boundary_label.pack(pady=10)
+        
+        # Store the mouse boundary dimensions
+        self.boundary_width = 200
+        self.boundary_height = 200
+        
         self.usb_comm = None
         self.setup_usb_comm()  # Setup USB communication immediately
 
@@ -248,7 +263,12 @@ class AnyRC:
             self.usb_comm.disconnect()
         
         # Clear any scheduled updates
-        self.root.after_cancel(self.root.after(1))
+        try:
+            # Cancel any pending after callbacks safely
+            for after_id in self.root.tk.eval('after info').split():
+                self.root.after_cancel(after_id)
+        except Exception as e:
+            print(f"Error cleaning up scheduled tasks: {e}")
         
         # Force garbage collection before closing
         gc.collect()
@@ -272,7 +292,7 @@ class AnyRC:
         elif selected_device == "Mouse":
             dialog = tk.Toplevel(self.root)
             dialog.title("Select Mouse Input")
-            dialog.geometry("300x250")
+            dialog.geometry("300x400")
             dialog.transient(self.root)
             dialog.grab_set()
 
@@ -507,25 +527,45 @@ class AnyRC:
 
     def read_mouse_motion(self, event):
         """
-        Handles mouse motion events and wheel events.
+        Handles mouse motion and wheel events within the boundary area.
+        Always clamps output between 1000 and 2000.
         """
         for row in self.mouse_assigned_rows:
-            if row["device"].get() == "Mouse":
-                input_type = row["assigned_input"].get()
-                value = 1500  # Default center value
+            if row["device"].get() != "Mouse":
+                continue
 
-                if input_type == "Motion-X":
-                    value = int(1000 + (event.x / self.root.winfo_width()) * 1000)
-                elif input_type == "Motion-Y":
-                    value = int(1000 + (event.y / self.root.winfo_height()) * 1000)
-                elif input_type == "MouseWheel" and hasattr(event, 'delta'):
-                    # Mouse wheel movement (delta is typically ±120)
-                    current_value = int(row["input_display"].get() or 1500)
-                    wheel_sensitivity = 50  # Adjust this value to change sensitivity
-                    delta = event.delta / 120 * wheel_sensitivity
-                    value = max(1000, min(2000, current_value + delta))
-                
-                row["input_display"].config(state="normal")
-                row["input_display"].delete(0, "end")
-                row["input_display"].insert(0, str(int(value)))
-                row["input_display"].config(state="readonly")
+            input_type = row["assigned_input"].get()
+            value = 1500  # default center
+
+            # Get mouse boundary position
+            boundary_x = self.mouse_boundary.winfo_rootx()
+            boundary_y = self.mouse_boundary.winfo_rooty()
+            
+            # Get mouse position relative to boundary
+            rel_x = max(0, min(self.boundary_width, event.x_root - boundary_x))
+            rel_y = max(0, min(self.boundary_height, event.y_root - boundary_y))
+
+            if input_type == "Motion-X":
+                # Normalize x position within boundary
+                norm = rel_x / self.boundary_width
+                value = 1000 + norm * 1000
+
+            elif input_type == "Motion-Y":
+                # Normalize y position within boundary
+                norm = rel_y / self.boundary_height
+                value = 1000 + norm * 1000
+
+            elif input_type == "MouseWheel" and hasattr(event, 'delta'):
+                current_value = int(row["input_display"].get() or 1500)
+                wheel_sensitivity = 50
+                delta = event.delta / 120 * wheel_sensitivity
+                value = current_value + delta
+
+            # Clamp the final value between 1000–2000
+            value = max(1000, min(2000, int(value)))
+
+            # Display result
+            row["input_display"].config(state="normal")
+            row["input_display"].delete(0, "end")
+            row["input_display"].insert(0, str(value))
+            row["input_display"].config(state="readonly")
