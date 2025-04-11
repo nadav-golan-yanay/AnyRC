@@ -1,4 +1,4 @@
-<img align="left" src="pc_app/Icon/AnyRC_logo_compressed.png" alt="AnyRC Logo" width="50" style="margin-right: 10px"/>
+<img align="left" src="pc_app/Icon/AnyRC_logo_compressed.png" alt="AnyRC Logo" width="50" style="margin-right: 10px; border-radius: 50%;"/>
 
 # AnyRC
 
