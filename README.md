@@ -1,8 +1,6 @@
-# AnyRC
+<img align="left" src="pc_app/Icon/AnyRC_logo_compressed.png" alt="AnyRC Logo" width="50" style="margin-right: 10px"/>
 
-<p align="center">
-  <img src="assets/logo.png" alt="AnyRC Logo" width="200"/>
-</p>
+# AnyRC
 
 ## About The Project
 AnyRC is an innovative remote control simulation platform that enables realistic RC vehicle modeling and testing. This project focuses on creating highly accurate and customizable RC vehicle simulations for hobbyists, developers, and researchers.
