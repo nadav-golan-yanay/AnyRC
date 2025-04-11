@@ -75,8 +75,9 @@ class AnyRC:
                                               command=lambda r=row: self.assign_input(r))
             row["assign_button"].grid(row=i + 1, column=1, padx=5, pady=5)
 
-            # Assigned input display
-            row["assigned_input"] = ttk.Entry(self.table_frame, state="readonly", width=15)
+            # Assigned input display with explicit style
+            row["assigned_input"] = ttk.Entry(self.table_frame, width=15)
+            row["assigned_input"].configure(state="readonly", style="Default.TEntry")
             row["assigned_input"].grid(row=i + 1, column=2, padx=5, pady=5)
 
             # Input display
@@ -84,6 +85,11 @@ class AnyRC:
             row["input_display"].grid(row=i + 1, column=3, padx=5, pady=5)
 
             self.rows.append(row)
+
+        # Configure styles before creating widgets
+        self.style = ttk.Style()
+        self.style.configure("Assigned.TEntry", fieldbackground="pale green")
+        self.style.configure("Default.TEntry", fieldbackground="white")
 
         # RC Channels Window
         self.rc_window = ttk.LabelFrame(self.main_frame, text="RC Channels")
@@ -112,6 +118,8 @@ class AnyRC:
         self.update_interval = 100  # 100ms for UI updates
         self.gc_interval = 60  # Run garbage collection every 60 seconds
         self.update_rc_display_periodically()  # Now safe to call this
+        self.mouse_motion_active = False
+        self.mouse_assigned_rows = []  # Track rows with mouse assignments
 
     def set_usb_comm(self, usb_comm):
         """
@@ -255,29 +263,89 @@ class AnyRC:
         if not selected_device:
             return
 
+        self.current_row = row
+        # Explicitly set the style to show assignment mode
+        row["assigned_input"].configure(style="Assigned.TEntry")
+
         if selected_device == "Keyboard":
-            self.current_row = row
-            self.root.bind("<KeyPress>", self.capture_key)  # Bind key press event
-        else:
-            # Simulate input assignment for non-keyboard devices
-            assigned_input = "Input1"  # Placeholder for detected input
-            row["assigned_input"].config(state="normal")
-            row["assigned_input"].delete(0, "end")
-            row["assigned_input"].insert(0, assigned_input)
-            row["assigned_input"].config(state="readonly")
+            self.root.bind("<KeyPress>", self.capture_key)
+        elif selected_device == "Mouse":
+            dialog = tk.Toplevel(self.root)
+            dialog.title("Select Mouse Input")
+            dialog.geometry("300x250")
+            dialog.transient(self.root)
+            dialog.grab_set()
+
+            ttk.Label(dialog, text="Select mouse input type:").pack(pady=10)
+            
+            selected_type = tk.StringVar(value="")
+            
+            input_types = [
+                ("Left Button", "Button-1"),
+                ("Middle Button", "Button-2"),
+                ("Right Button", "Button-3"),
+                ("X Movement", "Motion-X"),
+                ("Y Movement", "Motion-Y"),
+                ("Wheel", "MouseWheel")
+            ]
+
+            for text, value in input_types:
+                ttk.Radiobutton(dialog, text=text, value=value, 
+                              variable=selected_type).pack(pady=5)
+
+            def confirm_selection():
+                input_type = selected_type.get()
+                if input_type:
+                    dialog.destroy()  # Close dialog first
+                    self.capture_mouse_input(None, input_type)  # Then capture input
+                else:
+                    # If no selection, reset the style
+                    self.current_row["assigned_input"].configure(style="Default.TEntry")
+
+            ttk.Button(dialog, text="Assign", command=confirm_selection).pack(pady=10)
+            
+            def on_dialog_close():
+                # Reset style when dialog is closed without selection
+                self.current_row["assigned_input"].configure(style="Default.TEntry")
+                self.current_row = None
+                dialog.destroy()
+                
+            dialog.protocol("WM_DELETE_WINDOW", on_dialog_close)
 
     def capture_key(self, event):
-        """
-        Captures the key pressed and assigns it to the current row.
-        """
         if self.current_row:
-            assigned_input = event.keysym  # Get the key symbol (e.g., "a", "Shift")
+            assigned_input = event.keysym
             self.current_row["assigned_input"].config(state="normal")
             self.current_row["assigned_input"].delete(0, "end")
             self.current_row["assigned_input"].insert(0, assigned_input)
             self.current_row["assigned_input"].config(state="readonly")
-            self.root.unbind("<KeyPress>")  # Unbind the key press event
+            self.root.unbind("<KeyPress>")
             self.current_row = None
+
+    def capture_mouse_input(self, event, input_type):
+        """
+        Captures mouse input for assignment.
+        """
+        if self.current_row:
+            try:
+                self.current_row["assigned_input"].config(state="normal")
+                self.current_row["assigned_input"].delete(0, "end")
+                self.current_row["assigned_input"].insert(0, input_type)
+                self.current_row["assigned_input"].config(state="readonly")
+                
+                # Add row to mouse tracking if it's a motion event
+                if "Motion" in input_type or input_type == "MouseWheel":
+                    self.mouse_motion_active = True
+                    if self.current_row not in self.mouse_assigned_rows:
+                        self.mouse_assigned_rows.append(self.current_row)
+                
+                # Reset style after successful assignment
+                self.current_row["assigned_input"].configure(style="Default.TEntry")
+                self.current_row = None
+            except Exception as e:
+                print(f"Error in capture_mouse_input: {e}")
+                self.current_row["assigned_input"].configure(style="Default.TEntry")
+                self.current_row = None
 
     def start_read(self):
         """
@@ -289,6 +357,16 @@ class AnyRC:
         self.reading_inputs = True
         self.root.bind("<KeyPress>", self.read_keyboard_input)  # Bind key press events
         self.root.bind("<KeyRelease>", self.read_keyboard_release)  # Bind key release events
+        # Add mouse bindings
+        self.root.bind("<Button-1>", self.read_mouse_input)
+        self.root.bind("<Button-2>", self.read_mouse_input)
+        self.root.bind("<Button-3>", self.read_mouse_input)
+        self.root.bind("<ButtonRelease-1>", self.read_mouse_release)
+        self.root.bind("<ButtonRelease-2>", self.read_mouse_release)
+        self.root.bind("<ButtonRelease-3>", self.read_mouse_release)
+        if self.mouse_motion_active:
+            self.root.bind("<Motion>", self.read_mouse_motion)
+            self.root.bind("<MouseWheel>", self.read_mouse_motion)
         self.update_process_inputs()  # Start sending inputs to the process
 
     def stop_read(self):
@@ -301,6 +379,16 @@ class AnyRC:
         self.reading_inputs = False
         self.root.unbind("<KeyPress>")  # Unbind key press events
         self.root.unbind("<KeyRelease>")  # Unbind key release events
+        # Unbind mouse events
+        self.root.unbind("<Button-1>")
+        self.root.unbind("<Button-2>")
+        self.root.unbind("<Button-3>")
+        self.root.unbind("<ButtonRelease-1>")
+        self.root.unbind("<ButtonRelease-2>")
+        self.root.unbind("<ButtonRelease-3>")
+        self.root.unbind("<Motion>")
+        self.root.unbind("<B1-Motion>")
+        self.root.unbind("<MouseWheel>")
 
     def reload_process_module(self):
         """
@@ -391,4 +479,53 @@ class AnyRC:
                 row["input_display"].config(state="normal")
                 row["input_display"].delete(0, "end")
                 row["input_display"].insert(0, mapped_value)
+                row["input_display"].config(state="readonly")
+
+    def read_mouse_input(self, event):
+        """
+        Handles mouse button press events.
+        """
+        input_type = f"Button-{event.num}"
+        for row in self.rows:
+            if row["device"].get() == "Mouse" and row["assigned_input"].get() == input_type:
+                row["input_display"].config(state="normal")
+                row["input_display"].delete(0, "end")
+                row["input_display"].insert(0, "1")
+                row["input_display"].config(state="readonly")
+
+    def read_mouse_release(self, event):
+        """
+        Handles mouse button release events.
+        """
+        input_type = f"Button-{event.num}"
+        for row in self.rows:
+            if row["device"].get() == "Mouse" and row["assigned_input"].get() == input_type:
+                row["input_display"].config(state="normal")
+                row["input_display"].delete(0, "end")
+                row["input_display"].insert(0, "0")
+                row["input_display"].config(state="readonly")
+
+    def read_mouse_motion(self, event):
+        """
+        Handles mouse motion events and wheel events.
+        """
+        for row in self.mouse_assigned_rows:
+            if row["device"].get() == "Mouse":
+                input_type = row["assigned_input"].get()
+                value = 1500  # Default center value
+
+                if input_type == "Motion-X":
+                    value = int(1000 + (event.x / self.root.winfo_width()) * 1000)
+                elif input_type == "Motion-Y":
+                    value = int(1000 + (event.y / self.root.winfo_height()) * 1000)
+                elif input_type == "MouseWheel" and hasattr(event, 'delta'):
+                    # Mouse wheel movement (delta is typically ±120)
+                    current_value = int(row["input_display"].get() or 1500)
+                    wheel_sensitivity = 50  # Adjust this value to change sensitivity
+                    delta = event.delta / 120 * wheel_sensitivity
+                    value = max(1000, min(2000, current_value + delta))
+                
+                row["input_display"].config(state="normal")
+                row["input_display"].delete(0, "end")
+                row["input_display"].insert(0, str(int(value)))
                 row["input_display"].config(state="readonly")
