@@ -1,0 +1,14 @@
+{
+    "rules": [
+        {
+            "channel": 2,
+            "condition": "input == 1",
+            "action": "self.rc_channels[channel] += 10"
+        },
+        {
+            "channel": 3,
+            "condition": "input == 1",
+            "action": "self.rc_channels[channel] = 2000"
+        }
+    ]
+}
