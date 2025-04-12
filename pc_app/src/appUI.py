@@ -57,6 +57,56 @@ class AnyRC:
                                          state='disabled')
         self.edit_process_btn.pack(side='right', padx=5)
         
+        # Add preset selection frame after process frame
+        self.preset_frame = ttk.Frame(self.root)
+        self.preset_frame.pack(fill='x', pady=5)
+        
+        ttk.Label(self.preset_frame, text="Preset Configuration:").pack(side='left', padx=5)
+        
+        self.presets = {
+            "Select preset...": None,
+            "Keyboard Gaming": [
+                ("Keyboard", "w"),      # Forward
+                ("Keyboard", "s"),      # Backward
+                ("Keyboard", "a"),      # Left
+                ("Keyboard", "d"),      # Right
+                ("Keyboard", "space"),  # Jump/Up
+                ("Keyboard", "Control_L"),  # Down
+                ("Keyboard", "e"),      # Action 1
+                ("Keyboard", "q"),      # Action 2
+            ],
+            "Mouse Flight": [
+                ("Mouse", "Motion-X"),  # Roll
+                ("Mouse", "Motion-Y"),  # Pitch
+                ("Mouse", "Button-1"),  # Fire
+                ("Mouse", "Button-3"),  # Alternative Fire
+                ("Keyboard", "w"),      # Throttle Up
+                ("Keyboard", "s"),      # Throttle Down
+                ("Keyboard", "a"),      # Yaw Left
+                ("Keyboard", "d"),      # Yaw Right
+            ],
+            "Controller": [
+                ("Controller", "Axis-0"),  # Left Stick X
+                ("Controller", "Axis-1"),  # Left Stick Y
+                ("Controller", "Axis-2"),  # Right Stick X
+                ("Controller", "Axis-3"),  # Right Stick Y
+                ("Controller", "Button-0"), # X Button
+                ("Controller", "Button-1"), # Circle Button
+                ("Controller", "Button-2"), # Square Button
+                ("Controller", "Button-3"), # Triangle Button
+            ],
+            "Custom": None
+        }
+        
+        self.preset_var = tk.StringVar(value="Select preset...")
+        self.preset_combo = ttk.Combobox(self.preset_frame, 
+                                       textvariable=self.preset_var,
+                                       values=list(self.presets.keys()),
+                                       state="readonly",
+                                       width=30)
+        self.preset_combo.pack(side='left', padx=5)
+        self.preset_combo.bind('<<ComboboxSelected>>', self.on_preset_change)
+        
         # Add mouse boundary frame after usb_frame
         self.mouse_boundary = ttk.Frame(self.root, borderwidth=2, relief="solid")
         self.mouse_boundary.pack(side='right', padx=10, pady=10)
@@ -85,6 +135,10 @@ class AnyRC:
 
         self.main_frame = Frame(root)
         self.main_frame.pack(fill="both", expand=True)
+
+        # Initialize mouse-related attributes before creating rows
+        self.mouse_motion_active = False
+        self.mouse_assigned_rows = []  # Track rows with mouse assignments
 
         self.table_frame = ttk.Frame(self.main_frame)
         self.table_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
@@ -121,6 +175,29 @@ class AnyRC:
 
             self.rows.append(row)
 
+        # Add example assignments
+        example_assignments = [
+            ("Keyboard", "w"),
+            ("Keyboard", "s"),
+            ("Keyboard", "a"),
+            ("Keyboard", "d"),
+            ("Mouse", "Motion-X"),
+            ("Mouse", "Motion-Y"),
+            ("Mouse", "Button-1"),
+            ("Mouse", "Button-3"),
+        ]
+
+        # Apply example assignments to first 8 rows
+        for i, (device, input_type) in enumerate(example_assignments[:8]):
+            self.rows[i]["device"].set(device)
+            self.rows[i]["assigned_input"].configure(state="normal")
+            self.rows[i]["assigned_input"].delete(0, "end")
+            self.rows[i]["assigned_input"].insert(0, input_type)
+            self.rows[i]["assigned_input"].configure(state="readonly")
+            if device == "Mouse" and "Motion" in input_type:
+                self.mouse_assigned_rows.append(self.rows[i])
+                self.mouse_motion_active = True
+
         # Configure styles before creating widgets
         self.style = ttk.Style()
         self.style.configure("Assigned.TEntry", fieldbackground="pale green")
@@ -153,8 +230,6 @@ class AnyRC:
         self.update_interval = 100  # 100ms for UI updates
         self.gc_interval = 60  # Run garbage collection every 60 seconds
         self.update_rc_display_periodically()  # Now safe to call this
-        self.mouse_motion_active = False
-        self.mouse_assigned_rows = []  # Track rows with mouse assignments
 
     def set_usb_comm(self, usb_comm):
         """
@@ -752,3 +827,49 @@ class AnyRC:
             self.edit_process_btn.config(state='normal')
         else:
             self.edit_process_btn.config(state='disabled')
+
+    def on_preset_change(self, event=None):
+        """
+        Handle preset configuration changes
+        """
+        preset_name = self.preset_var.get()
+        if preset_name in ["Select preset...", "Custom"]:
+            # Clear all assignments for Custom
+            if preset_name == "Custom":
+                for row in self.rows:
+                    row["device"].set("Keyboard")
+                    row["assigned_input"].configure(state="normal")
+                    row["assigned_input"].delete(0, "end")
+                    row["assigned_input"].configure(state="readonly")
+                self.mouse_assigned_rows = []
+                self.mouse_motion_active = False
+            return
+
+        # Apply preset assignments
+        assignments = self.presets[preset_name]
+        self.mouse_assigned_rows = []
+        self.mouse_motion_active = False
+
+        # Clear existing assignments first
+        for row in self.rows:
+            row["device"].set("Keyboard")
+            row["assigned_input"].configure(state="normal")
+            row["assigned_input"].delete(0, "end")
+            row["assigned_input"].configure(state="readonly")
+
+        # Apply new assignments
+        for i, (device, input_type) in enumerate(assignments):
+            if i >= len(self.rows):
+                break
+                
+            self.rows[i]["device"].set(device)
+            self.rows[i]["assigned_input"].configure(state="normal")
+            self.rows[i]["assigned_input"].delete(0, "end")
+            self.rows[i]["assigned_input"].insert(0, input_type)
+            self.rows[i]["assigned_input"].configure(state="readonly")
+            
+            # Update mouse tracking
+            if device == "Mouse" and "Motion" in input_type:
+                self.mouse_motion_active = True
+                if self.rows[i] not in self.mouse_assigned_rows:
+                    self.mouse_assigned_rows.append(self.rows[i])
