@@ -37,6 +37,26 @@ class AnyRC:
         self.search_usb_button = ttk.Button(self.usb_frame, text="Search USB", command=self.search_usb)
         self.search_usb_button.pack(side='right', padx=5)
         
+        # Add process selection frame after USB frame
+        self.process_frame = ttk.Frame(self.root)
+        self.process_frame.pack(fill='x', pady=5)
+        
+        ttk.Label(self.process_frame, text="Select Process:").pack(side='left', padx=5)
+        self.process_var = tk.StringVar(value="default_process")
+        self.process_combo = ttk.Combobox(self.process_frame, 
+                                        textvariable=self.process_var,
+                                        values=["default_process", "keyboard_process", "custom_process"],
+                                        state="readonly")
+        self.process_combo.pack(side='left', padx=5)
+        self.process_combo.bind('<<ComboboxSelected>>', self.on_process_change)
+        
+        # Add edit process button
+        self.edit_process_btn = ttk.Button(self.process_frame, 
+                                         text="Edit Process", 
+                                         command=self.open_processor_file,
+                                         state='disabled')
+        self.edit_process_btn.pack(side='right', padx=5)
+        
         # Add mouse boundary frame after usb_frame
         self.mouse_boundary = ttk.Frame(self.root, borderwidth=2, relief="solid")
         self.mouse_boundary.pack(side='right', padx=10, pady=10)
@@ -543,6 +563,11 @@ class AnyRC:
             inputs.extend([0] * (8 - len(inputs)))
 
             self.process.update_ui_inputs(inputs)
+            
+            # Update the process type
+            self.process.set_process(self.process_var.get())
+            
+            # Process the inputs
             self.process.process_inputs()
 
             # Schedule next update only if still reading inputs
@@ -717,3 +742,13 @@ class AnyRC:
         # Schedule next controller read if still active
         if self.reading_inputs:
             self.root.after(10, self.read_controller_input)
+
+    def on_process_change(self, event=None):
+        """
+        Handle process selection change
+        """
+        selected = self.process_var.get()
+        if selected == "custom_process":
+            self.edit_process_btn.config(state='normal')
+        else:
+            self.edit_process_btn.config(state='disabled')
